@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>o9 Self Heal Agent</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:       #0d1117;
+  --surface:  #161b27;
+  --surface2: #1e2535;
+  --border:   #2a3248;
+  --accent:   #4f7cff;
+  --adim:     #1a2755;
+  --ok:       #22c55e;
+  --warn:     #f59e0b;
+  --err:      #ef4444;
+  --text:     #dde4f0;
+  --muted:    #5e6e8a;
+  --mono:     "JetBrains Mono","Fira Code",monospace;
+  --sans:     "Inter",system-ui,sans-serif;
+  --r:        10px;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; line-height:1.6; min-height:100vh; }
+
+/* ── Shell ── */
+.shell { display:grid; grid-template-columns:220px 1fr; min-height:100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  padding:24px 0;
+  display:flex; flex-direction:column; gap:2px;
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+}
+.brand { padding:0 18px 20px; border-bottom:1px solid var(--border); margin-bottom:10px; }
+.brand-tag { font-size:10px; font-weight:700; letter-spacing:.1em; color:var(--accent); text-transform:uppercase; }
+.brand h1 { font-size:15px; font-weight:700; margin-top:5px; line-height:1.25; }
+
+.nav-item {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 18px; cursor:pointer;
+  border-left:3px solid transparent;
+  font-size:13px; color:var(--muted);
+  transition:all .15s;
+}
+.nav-item:hover { background:rgba(79,124,255,.06); color:var(--text); }
+.nav-item.active { border-left-color:var(--accent); background:rgba(79,124,255,.1); color:var(--text); }
+.nav-item.done { color:var(--ok); }
+.nav-badge {
+  width:22px; height:22px; border-radius:50%;
+  border:1.5px solid currentColor; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:800;
+}
+.nav-item.done .nav-badge { background:var(--ok); border-color:var(--ok); color:#000; }
+.nav-item.active .nav-badge { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+/* ── Main ── */
+.main { padding:40px 52px; max-width:900px; }
+
+/* ── Progress ── */
+.prog-wrap { height:3px; background:var(--border); border-radius:99px; margin-bottom:38px; }
+.prog-fill  { height:100%; background:var(--accent); border-radius:99px; transition:width .4s ease; }
+
+/* ── Panel ── */
+.panel { display:none; animation:fadeUp .22s ease; }
+.panel.active { display:block; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+
+/* ── Step header ── */
+.step-hd { display:flex; align-items:flex-start; gap:16px; margin-bottom:30px; }
+.step-icon {
+  width:46px; height:46px; flex-shrink:0; border-radius:var(--r);
+  background:var(--adim); border:1.5px solid var(--accent);
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+}
+.step-label { font-size:11px; color:var(--muted); font-weight:700; letter-spacing:.07em; margin-bottom:3px; }
+.step-title { font-size:22px; font-weight:800; line-height:1.2; }
+.step-sub   { font-size:13px; color:var(--muted); margin-top:5px; }
+
+/* ── Cards ── */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:20px 22px; margin-bottom:16px; }
+.card-title { font-size:11px; font-weight:800; letter-spacing:.07em; color:var(--accent); margin-bottom:14px; }
+
+/* ── Evidence tab switcher ── */
+.ev-tabs { display:flex; gap:0; margin-bottom:16px; border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+.ev-tab {
+  flex:1; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer;
+  background:transparent; color:var(--muted); border:none; font-family:var(--sans);
+  transition:all .15s; text-align:center;
+}
+.ev-tab:hover { color:var(--text); background:rgba(255,255,255,.03); }
+.ev-tab.active { background:var(--adim); color:var(--accent); }
+.ev-pane { display:none; }
+.ev-pane.active { display:block; }
+
+/* ── Drop zone ── */
+.dropzone {
+  border:2px dashed var(--border); border-radius:var(--r);
+  padding:36px 24px; text-align:center; cursor:pointer;
+  transition:all .2s; position:relative;
+}
+.dropzone:hover, .dropzone.drag { border-color:var(--accent); background:rgba(79,124,255,.04); }
+.dropzone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.dz-icon { font-size:30px; margin-bottom:10px; }
+.dz-label { font-size:14px; font-weight:600; margin-bottom:4px; }
+.dz-sub { font-size:12px; color:var(--muted); }
+.dz-filename {
+  margin-top:14px; padding:8px 14px; border-radius:var(--r);
+  background:var(--adim); border:1px solid var(--accent);
+  font-size:12px; color:var(--accent); display:none;
+}
+/* clear file link */
+.dz-clear { display:none; margin-top:8px; font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline; }
+.dz-clear:hover { color:var(--err); }
+
+/* ── Textarea / inputs ── */
+label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; letter-spacing:.04em; }
+textarea, input[type=text], select {
+  width:100%; background:var(--surface2); border:1px solid var(--border);
+  border-radius:var(--r); color:var(--text); font-family:var(--sans);
+  font-size:13.5px; padding:10px 14px; outline:none; transition:border-color .15s;
+}
+textarea:focus, input[type=text]:focus, select:focus { border-color:var(--accent); }
+textarea { resize:vertical; min-height:80px; }
+select option { background:var(--surface2); }
+.field { margin-bottom:18px; }
+.field-row { display:grid; gap:14px; }
+.cols-2 { grid-template-columns:1fr 1fr; }
+.cols-3 { grid-template-columns:1fr 1fr 1fr; }
+
+/* ── Alerts ── */
+.alert { padding:11px 15px; border-radius:var(--r); font-size:13px; margin-bottom:14px; border-left:3px solid; }
+.alert-info { background:rgba(79,124,255,.08); border-color:var(--accent); color:#99b4ff; }
+.alert-ok   { background:rgba(34,197,94,.08);  border-color:var(--ok);     color:#86efac; }
+.alert-warn { background:rgba(245,158,11,.08); border-color:var(--warn);   color:#fcd34d; }
+.alert-err  { background:rgba(239,68,68,.08);  border-color:var(--err);    color:#fca5a5; }
+
+/* ── Tags ── */
+.tag-group { display:flex; flex-wrap:wrap; gap:8px; }
+.tag {
+  padding:5px 13px; border-radius:99px; border:1.5px solid var(--border);
+  font-size:12px; cursor:pointer; color:var(--muted); transition:all .15s; user-select:none;
+}
+.tag:hover { border-color:var(--accent); color:var(--text); }
+.tag.sel { background:var(--adim); border-color:var(--accent); color:var(--accent); font-weight:700; }
+
+/* ── Checklist ── */
+.checklist { display:flex; flex-direction:column; gap:8px; }
+.chk {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px; border:1px solid var(--border); border-radius:var(--r);
+  cursor:pointer; transition:all .15s;
+}
+.chk:hover { border-color:var(--border); background:rgba(255,255,255,.02); }
+.chk.checked { border-color:var(--ok); background:rgba(34,197,94,.05); }
+.chk .box {
+  width:18px; height:18px; border:1.5px solid var(--muted); border-radius:4px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; transition:all .15s;
+}
+.chk.checked .box { background:var(--ok); border-color:var(--ok); }
+.chk .box::after { content:''; display:none; width:5px; height:9px; border:2px solid #000; border-top:none; border-left:none; transform:rotate(45deg); margin-top:-2px; }
+.chk.checked .box::after { display:block; }
+
+/* ── Spinner ── */
+.spinner-wrap { display:none; flex-direction:column; align-items:center; gap:16px; padding:48px 0; }
+.spinner-wrap.show { display:flex; }
+.spinner {
+  width:40px; height:40px; border-radius:50%;
+  border:3px solid var(--border); border-top-color:var(--accent);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+.spinner-msg { font-size:13px; color:var(--muted); }
+
+/* ── AI output blocks ── */
+.ai-section { margin-bottom:24px; }
+.ai-section-title { font-size:11px; font-weight:800; letter-spacing:.07em; color:var(--accent); margin-bottom:10px; }
+.ai-body {
+  background:var(--surface2); border:1px solid var(--border); border-radius:var(--r);
+  padding:16px 18px; font-size:13.5px; line-height:1.75; white-space:pre-wrap;
+  word-break:break-word; color:var(--text);
+}
+.ai-body.editable { border-color:var(--border); }
+.ai-body.editable:focus { border-color:var(--accent); outline:none; }
+
+/* ── Confidence pills ── */
+.conf-row { display:flex; gap:10px; }
+.conf-pill {
+  flex:1; padding:10px 12px; border-radius:var(--r); border:1.5px solid var(--border);
+  background:transparent; color:var(--muted); font-family:var(--sans); font-size:12.5px;
+  cursor:pointer; transition:all .15s; text-align:center; font-weight:600;
+}
+.conf-pill:hover { border-color:var(--border); color:var(--text); }
+.conf-pill.high.sel { border-color:var(--ok);   background:rgba(34,197,94,.1);  color:var(--ok); }
+.conf-pill.med.sel  { border-color:var(--warn);  background:rgba(245,158,11,.1); color:var(--warn); }
+.conf-pill.low.sel  { border-color:var(--err);   background:rgba(239,68,68,.1);  color:var(--err); }
+
+/* ── Mitigation cards ── */
+.mit-card {
+  border:1px solid var(--border); border-radius:var(--r); margin-bottom:12px; overflow:hidden;
+}
+.mit-hd {
+  display:flex; align-items:center; gap:10px; padding:12px 16px;
+  background:var(--surface2); cursor:pointer; font-size:13px; font-weight:700;
+}
+.mit-num { width:24px; height:24px; border-radius:50%; background:var(--adim); color:var(--accent); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; flex-shrink:0; }
+.mit-body { padding:16px; display:none; }
+.mit-card.open .mit-body { display:block; }
+.chevron { margin-left:auto; color:var(--muted); font-size:14px; transition:transform .2s; }
+.mit-card.open .chevron { transform:rotate(180deg); }
+
+/* ── Code block ── */
+.code-block {
+  background:#0c1018; border:1px solid var(--border); border-radius:var(--r);
+  padding:14px 16px; font-family:var(--mono); font-size:12px; color:#8bb4f0;
+  white-space:pre-wrap; margin-top:10px; max-height:300px; overflow-y:auto;
+}
+
+/* ── Summary ── */
+.summary-out {
+  background:#0c1018; border:1px solid var(--border); border-radius:var(--r);
+  padding:22px 24px; font-family:var(--mono); font-size:12.5px; line-height:1.8;
+  white-space:pre-wrap; word-break:break-word; color:#c2cedf;
+  max-height:520px; overflow-y:auto;
+}
+
+/* ── Buttons ── */
+.btn-row { display:flex; gap:10px; margin-top:28px; flex-wrap:wrap; }
+.btn {
+  padding:10px 22px; border-radius:var(--r); font-family:var(--sans);
+  font-size:13.5px; font-weight:700; cursor:pointer; border:none; transition:opacity .15s,transform .1s;
+}
+.btn:active { transform:scale(.97); }
+.btn:disabled { opacity:.3; cursor:not-allowed; }
+.btn-primary  { background:var(--accent); color:#fff; }
+.btn-primary:hover:not(:disabled) { opacity:.87; }
+.btn-ghost    { background:transparent; color:var(--muted); border:1px solid var(--border); }
+.btn-ghost:hover { border-color:var(--border); color:var(--text); }
+.btn-ok       { background:rgba(34,197,94,.15); color:var(--ok); border:1px solid var(--ok); }
+.btn-copy     { background:var(--adim); color:var(--accent); border:1px solid var(--accent); }
+.btn-copy:hover { background:var(--accent); color:#fff; }
+
+/* ── Toast ── */
+.toast {
+  position:fixed; bottom:28px; right:28px;
+  background:var(--ok); color:#000; font-size:13px; font-weight:700;
+  padding:10px 18px; border-radius:var(--r);
+  opacity:0; pointer-events:none; transform:translateY(8px);
+  transition:opacity .2s,transform .2s;
+}
+.toast.show { opacity:1; pointer-events:auto; transform:none; }
+
+/* ── Responsive ── */
+@media(max-width:680px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{height:auto;position:static;flex-direction:row;flex-wrap:wrap;padding:10px}
+  .main{padding:20px 14px}
+  .cols-2,.cols-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ── Sidebar ──────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="brand">
+    <div class="brand-tag">o9 Solutions</div>
+    <h1>o9 Self Heal<br>Agent</h1>
+  </div>
+  <div class="nav-item active" data-step="0" onclick="goTo(0)">
+    <div class="nav-badge">1</div><span>Upload &amp; Describe</span>
+  </div>
+  <div class="nav-item" data-step="1" onclick="goTo(1)">
+    <div class="nav-badge">2</div><span>AI Analysis</span>
+  </div>
+  <div class="nav-item" data-step="2" onclick="goTo(2)">
+    <div class="nav-badge">3</div><span>Review &amp; Validate</span>
+  </div>
+  <div class="nav-item" data-step="3" onclick="goTo(3)">
+    <div class="nav-badge">✦</div><span>Report</span>
+  </div>
+</nav>
+
+<!-- ── Main ─────────────────────────────────────────────── -->
+<main class="main">
+  <div class="prog-wrap"><div class="prog-fill" id="progFill" style="width:25%"></div></div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL 0 — UPLOAD & DESCRIBE
+  ════════════════════════════════════════════════════ -->
+  <div class="panel active" id="panel-0">
+    <div class="step-hd">
+      <div class="step-icon">📤</div>
+      <div>
+        <div class="step-label">Step 1 of 3</div>
+        <div class="step-title">Describe the RCA Trigger</div>
+        <div class="step-sub">Upload knowledge-base files (Active Rule Tutorial PDF, Tenant Extract), then specify the LHS measure whose value is missing, null, or zero.</div>
+      </div>
+    </div>
+
+    <!-- Unified evidence card -->
+    <div class="card">
+      <div class="card-title">EVIDENCE</div>
+
+      <!-- Tab switcher -->
+      <div class="ev-tabs">
+        <button class="ev-tab active" onclick="switchTab('file',this)">📎 Upload file</button>
+        <button class="ev-tab" onclick="switchTab('paste',this)">📋 Paste / type text</button>
+      </div>
+
+      <!-- File pane -->
+      <div class="ev-pane active" id="pane-file">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.csv,.txt,.log,.png,.jpg,.jpeg" multiple onchange="handleFiles(this)" />
+          <div class="dz-icon">📎</div>
+          <div class="dz-label">Drop files here or click to browse</div>
+          <div class="dz-sub">Add all knowledge-base PDFs + any extra evidence · supports multiple files</div>
+          <div id="dzFileList"></div>
+        </div>
+        <div class="dz-clear" id="dzClear" onclick="clearFiles()" style="display:none;">Remove all files</div>
+      </div>
+
+      <!-- Paste / type pane -->
+      <div class="ev-pane" id="pane-paste">
+        <textarea id="pastedEvidence" style="min-height:160px; font-family:var(--mono); font-size:12.5px;"
+          placeholder="Paste log output, error messages, IBPL query results, copied table data, or any free-form evidence here…&#10;&#10;The agent reads everything you provide."></textarea>
+        <div style="font-size:11.5px; color:var(--muted); margin-top:6px;">You can also use both tabs — file and pasted text are combined when analysing.</div>
+      </div>
+    </div>
+
+    <!-- RCA Trigger -->
+    <div class="card">
+      <div class="card-title">RCA TRIGGER</div>
+
+      <div class="field">
+        <label>LHS Measure Name <span style="color:var(--accent)">*</span></label>
+        <input type="text" id="lhsMeasure" placeholder="e.g. Projected Inventory, Net Requirements, Purchase Recommendation Qty" />
+      </div>
+
+      <div class="field-row cols-2">
+        <div class="field">
+          <label>Scope / Dimensions</label>
+          <input type="text" id="scopeDimensions" placeholder="e.g. Product: Item A, Location: DC-East" />
+        </div>
+        <div class="field">
+          <label>Time Period</label>
+          <input type="text" id="timePeriod" placeholder="e.g. Week 32, Aug 2024" />
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:0;">
+        <label>Plan Version / Scenario</label>
+        <input type="text" id="planVersion" placeholder="e.g. Baseline Plan v1, Scenario A" />
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="runAnalysis()">Run RCA with AI →</button>
+    </div>
+  </div><!-- /panel-0 -->
+
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL 1 — AI ANALYSIS (loading + results)
+  ════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-1">
+    <div class="step-hd">
+      <div class="step-icon">🤖</div>
+      <div>
+        <div class="step-label">Step 2 of 3</div>
+        <div class="step-title">AI Analysis</div>
+        <div class="step-sub">The o9 Measure RCA Agent reads your knowledge-base files, traces the dependency chain, and produces a structured Root Cause Analysis report.</div>
+      </div>
+    </div>
+
+    <!-- Spinner -->
+    <div class="spinner-wrap" id="spinnerWrap">
+      <div class="spinner"></div>
+      <div class="spinner-msg" id="spinnerMsg">Reading evidence…</div>
+    </div>
+
+    <!-- Results (hidden until done) -->
+    <div id="aiResults" style="display:none;">
+
+      <div class="alert alert-ok" id="analysisStatus"></div>
+
+      <!-- RCA Report output -->
+      <div class="ai-section">
+        <div class="ai-section-title">RCA REPORT</div>
+        <div id="rcaReportOutput" style="white-space:pre-wrap; font-family:var(--mono); font-size:12.5px; line-height:1.7; padding:16px; background:var(--surface2); border-radius:var(--r); border:1px solid var(--border); max-height:620px; overflow-y:auto;"></div>
+      </div>
+
+      <!-- Step 4A: Debugging log gate -->
+      <div id="step4aBlock" class="card" style="display:none;">
+        <div class="card-title">AGENT CONFIRMATION — STEP 4A</div>
+        <div class="alert alert-warn" style="margin-bottom:12px;">The agent is asking whether you want to proceed with debugging log investigation. Please confirm below.</div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn btn-ok" onclick="proceedWithLogs(true)">Yes — proceed with log investigation</button>
+          <button class="btn btn-ghost" onclick="proceedWithLogs(false)">No — close RCA</button>
+        </div>
+      </div>
+
+      <!-- Step 4A follow-up response -->
+      <div id="step4aResponse" class="ai-section" style="display:none;">
+        <div class="ai-section-title">FOLLOW-UP</div>
+        <div id="step4aOutput" style="white-space:pre-wrap; font-family:var(--mono); font-size:12.5px; line-height:1.7; padding:16px; background:var(--surface2); border-radius:var(--r); border:1px solid var(--border);"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goTo(0)">← Edit inputs</button>
+        <button class="btn btn-primary" onclick="goTo(2)">Review &amp; generate report →</button>
+      </div>
+    </div><!-- /aiResults -->
+  </div><!-- /panel-1 -->
+
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL 2 — REVIEW & VALIDATE
+  ════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-2">
+    <div class="step-hd">
+      <div class="step-icon">🛠️</div>
+      <div>
+        <div class="step-label">Step 3 of 3</div>
+        <div class="step-title">Review &amp; Validate</div>
+        <div class="step-sub">Confirm mitigation steps and validate closure before generating the report.</div>
+      </div>
+    </div>
+
+    <!-- RCA Summary (read-only) -->
+    <div class="card">
+      <div class="card-title">RCA SUMMARY</div>
+      <div id="rcaSummaryReview" style="white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.6; padding:14px; background:var(--surface2); border-radius:var(--r); border:1px solid var(--border); max-height:400px; overflow-y:auto; color:var(--muted);"></div>
+    </div>
+
+    <!-- Recommended actions -->
+    <div class="card">
+      <div class="card-title">RECOMMENDED ACTIONS</div>
+      <textarea id="recommendedActions" style="min-height:120px; font-family:var(--mono); font-size:12.5px;" placeholder="Actions identified from the RCA — edit or add notes here before finalising the report…"></textarea>
+    </div>
+
+    <!-- Validation checklist -->
+    <div class="card">
+      <div class="card-title">CLOSURE CHECKLIST</div>
+      <div class="checklist" id="closureChecklist">
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Root cause identified and confirmed</span></div>
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Missing / null input measure data loaded or corrected</span></div>
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Active Rule re-executed and LHS measure now populated</span></div>
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Downstream calculated measures verified at base grain</span></div>
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Result persists after re-run / recalculation</span></div>
+        <div class="chk" onclick="toggleChk(this)"><div class="box"></div><span>Business / planner sign-off recorded</span></div>
+      </div>
+    </div>
+
+    <!-- Closure fields -->
+    <div class="card">
+      <div class="card-title">CLOSURE RECORD</div>
+      <div class="field-row cols-2">
+        <div class="field">
+          <label>Confirmed root cause</label>
+          <input type="text" id="closedCause" placeholder="One-line summary of root cause" />
+        </div>
+        <div class="field">
+          <label>Owner</label>
+          <input type="text" id="owner" placeholder="e.g. Planning Lead" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Preventive action</label>
+        <input type="text" id="preventive" placeholder="e.g. Add data validation check for raw input measure before rule execution" />
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goTo(1)">← Back to analysis</button>
+      <button class="btn btn-primary" onclick="goTo(3)">Generate report →</button>
+    </div>
+  </div><!-- /panel-2 -->
+
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL 3 — REPORT
+  ════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-3">
+    <div class="step-hd">
+      <div class="step-icon">📋</div>
+      <div>
+        <div class="step-label">Report</div>
+        <div class="step-title">RCA Report</div>
+        <div class="step-sub">Ready to copy into a ticket, email, or Confluence page.</div>
+      </div>
+    </div>
+    <div class="summary-out" id="summaryOut"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+      <button class="btn btn-copy" onclick="copyReport()">Copy report</button>
+      <button class="btn btn-ghost" onclick="resetAll()">New RCA</button>
+    </div>
+  </div><!-- /panel-3 -->
+
+</main>
+</div><!-- /shell -->
+
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+/* ── State ──────────────────────────────────────────── */
+let uploadedFiles = []; // [{b64, mime, name}]
+let tenantRows   = []; // parsed rows from Accenture18 Tenant Extract xlsx
+let aiRaw = {};
+let rcaConversation = [];
+const SPINNER_MSGS = [
+  'Reading Active Rule Tutorial PDF…',
+  'Confirming LHS measure in tenant configuration…',
+  'Parsing Active Rule formula and scope…',
+  'Tracing RHS dependency chain…',
+  'Finalising RCA report…'
+];
+
+/* ── o9 Measure RCA Agent system prompt ─────────────── */
+const RCA_SYSTEM_PROMPT = `You are the o9 Measure RCA Agent. You analyze Active Rule configurations in the o9 Supply Chain Platform and perform Root Cause Analysis for any value of an LHS measure is either populated or missing, or 0 for a given scope, time, period, and version.
+
+Before performing any RCA, you must read and internalize the Active Rule Tutorial PDF that is provided to you as part of your knowledge base. This document is your authoritative reference for how Active Rules are structured, configured, and executed in o9. Any interpretation of rule configuration fields, formula syntax, scope settings, or execution behavior must be grounded in what this document defines — not in general assumptions.
+
+Your job is singular and precise: trace the absence of a LHS measure value back to the exact RHS (Right-Hand Side) measure(s) that are missing their data, and report them clearly.
+
+You do not guess. You do not infer data that has not been provided to you. You do not recommend solutions outside the scope of the rule configuration and data state you have been given.
+
+---
+
+## CORE TERMINOLOGY
+
+LHS Measure: The output measure of the rule — the measure whose missing value triggered this RCA. There is exactly one LHS per rule.
+
+RHS Measure: Any measure referenced in the rule's calculation expression that feeds into the LHS. A rule may have one or many RHS measures. Some RHS measures are raw data inputs (loaded externally). Others are themselves calculated by another rule, making them intermediate measures.
+
+Scope & Granularity: The set of dimensions that define where a measure applies — e.g., Product, Location, Customer, Channel and Time (Weekly, Monthly etc). A measure must be evaluated at the exact scope. A mismatch in grain between LHS and RHS must be explicitly called out.
+
+Calculation Logic: The formula, expression, or aggregation rule that the Active Rule uses to derive the LHS value from its RHS inputs.
+
+Active Rule: A rule that is in an enabled state in o9 and is configured to execute during plan runs.
+
+Value Status:
+  POPULATED — a non-null, non-blank numeric or string value exists
+  NULL      — a record exists but the value field is null
+  MISSING   — no record exists for this scope + time + version combination
+  ZERO      — a record exists with a value of exactly 0
+  UNKNOWN   — status cannot be confirmed from the inputs provided
+
+Never treat NULL, MISSING, and ZERO as interchangeable. They have different causes and different remediation paths.
+
+---
+
+## AGENT BEHAVIOR
+
+Execute the following steps in strict sequence. Do not skip steps. Do not reorder steps.
+
+STEP 0 — READ AND INTERNALIZE THE ACTIVE RULE TUTORIAL PDF
+  0a. Confirm that the Active Rule Tutorial PDF has been uploaded and is accessible. If not present, respond with: "The Active Rule Tutorial PDF has not been provided. Please upload it before RCA can begin."
+  0b. Read the full contents of the PDF completely.
+  0c. Extract and hold in context: Active Rule definition and structure, all configuration fields, LHS definition, RHS references, formula/expression syntax, scope and granularity configuration, rule activation, null handling, and any error states.
+
+STEP 1 — CONFIRM THE TRIGGER
+  Confirm that the LHS measure exists in the Tenant Configuration. Record:
+  • LHS measure name and ID
+  • The scope (dimension combination) at which it is calculated
+  • The time period (week, month, etc.)
+  • The plan version and scenario
+
+STEP 2 — PARSE THE ACTIVE RULE CONFIGURATION
+  Look for the Calculation Formula and the granularity (Scope) of the LHS Measure in the 'ActiveRuleFormulae' tab in the 'Accenture18 Tenant Extract 1' sheet provided in the knowledge base. Give the following results:
+  2a. Rule Filename
+  2b. FormulaStatement
+  2c. ScopeGrain
+  2d. IsEnabled (Populated with '1' or '0')
+
+  If the rule or formula uses a function, operator, or configuration pattern not documented in the IBPL Quick Ref Guide or Active Rule Tutorial, flag it as: UNRECOGNIZED CONSTRUCT — not found in Knowledge Base. Requires platform support verification.
+
+STEP 3 — START THE RCA FOR LHS MEASURE
+  Step 3a. If IsEnabled = '0': flag as 'Active Rule is disabled for this measure'.
+  Step 3b. Calculate RHS part of the Active Rule based on the formula and conditions applied, and compare LHS Measure Value (Output) with the RHS Input.
+    Case 1. LHS is null and RHS is non-null → incorrect record.
+    Case 2. LHS is 0 and RHS is Non-Zero → incorrect record.
+    Case 3. Both non-null and LHS ≠ RHS → incorrect record.
+    Case 4. LHS is Non-null and RHS is null → incorrect record.
+    Case 5. LHS is Non-null and RHS is 0 → incorrect record.
+    Case 6. LHS equals RHS → correct record.
+  Cases 1–5: Flag as 'Potential Active Rule Failure'.
+  Provide a tabular summary with:
+    1. Current Values as per the tenant data
+    2. Expected Values as per the formula written in the Active Rule
+
+STEP 4 — ANALYSIS ON RHS MEASURE(S)
+  If any RCA candidate from Step 3 is itself a calculated measure (not a raw input), recurse:
+  • Treat that calculated RHS measure as a new LHS.
+  • Identify the rule that produces it.
+  • Repeat Steps 1, 2, and 3 for that rule.
+  • Continue recursing until:
+      (a) A raw input measure that is NULL or MISSING — this is the true root cause, or
+      (b) A calculated measure whose rule configuration is not available — read the Accenture18 Tenant Extractor File and give the dependency (populated measure, Plugin Output, Procedure Output, Action Button, etc.)
+  Maximum recursion depth: 5 levels. If exceeded, state: "Dependency chain exceeds 5 levels. Manual investigation required beyond [last measure traced]."
+
+STEP 4A — PROMPT USER FOR DEBUGGING LOG INVESTIGATION
+  After STEP 4, ask: "Would you like to check the debugging logs for the trigger of this Active Rule? Please confirm: Yes — proceed with log investigation, or No — close RCA."
+  Do NOT assume the user's answer. Wait for explicit confirmation.
+  If YES: Redirect to the 'Logs' View under Debugging Workspace in the Accenture18 tenant.
+  If NO: Close with: "RCA closed at rule configuration level. Debugging log investigation was not requested. Re-open if log analysis is needed."
+
+STEP 5 — PRODUCE THE RCA FINDING
+  Produce the structured RCA output per the OUTPUT FORMAT below.
+
+---
+
+## DECISION RULES
+
+RULE 1 — Multiple missing RHS: list all co-contributing root causes.
+RULE 2 — All RHS populated but LHS missing: execute Step 4A, do not fabricate a cause.
+RULE 3 — Grain mismatch: treat as root cause category; state LHS grain, RHS grain, and missing bridge.
+RULE 4 — UNKNOWN status measures: request confirmation before proceeding.
+RULE 5 — Raw input MISSING: data was never loaded; remediation is a data load action.
+RULE 6 — Optional RHS missing: note but do not flag as root cause unless formula requires it.
+RULE 7 — Debugging log investigation is user-gated. Never proceed without explicit confirmation.
+RULE 8 — PDF is the authoritative reference. Flag any unrecognized constructs.
+
+---
+
+## OUTPUT FORMAT
+
+Structure every response exactly as follows:
+
+════════════════════════════════════════════
+RCA REPORT
+════════════════════════════════════════════
+
+TRIGGER
+  LHS Measure    : [name] ([ID])
+  Missing at     : [scope dimensions and values]
+  Time Period    : [week/month/etc.]
+  Version        : [plan version and scenario]
+  Value Status   : NULL / MISSING / ZERO
+
+RULE SUMMARY
+  Rule Name      : [name]
+  Rule ID        : [ID]
+  Calculation    : [exact formula as written in the rule]
+  LHS Grain      : [grain]
+  PDF Reference  : [section or page from the Active Rule Tutorial PDF, if applicable]
+
+RHS DEPENDENCY MAP
+  | # | Measure Name | Type     | Grain | Status    | Grain Match? |
+  |---|--------------|----------|-------|-----------|--------------|
+  | 1 | [name]       | Raw/Calc | [g]   | POPULATED | Yes          |
+
+[Continue with ROOT CAUSE, CASCADING EFFECT, RECOMMENDED ACTION, and Step 4A confirmation per the full output format]
+
+---
+
+## TENANT DETAILS
+
+API Key: b6emjfuk.abev2gcb51sagrqvdzfp99y
+Tenant: Accenture18
+Tenant ID: 5233
+Tenant URL: https://accenturesb.o9solutions.com
+
+All results must be based on config and data present in the Accenture18 Tenant. The Tenant Extractor File from Accenture18 contains all tenant configuration information.
+
+---
+
+## BEHAVIORAL GUARDRAILS
+
+G-1  Never assume a measure is populated if its status was not confirmed. Mark UNKNOWN and halt.
+G-2  Never simplify or rewrite the calculation formula. Always quote it exactly.
+G-3  Never conflate NULL, MISSING, and ZERO.
+G-4  Never recommend a fix outside the rule configuration or data state.
+G-5  Never stop at a calculated measure as the root cause. Always recurse to a raw input.
+G-6  Always include the full dependency chain in the output.
+G-7  Flag any unrecognized o9 function or operator as: UNRECOGNIZED CONSTRUCT.
+G-8  Scope is mandatory in every finding.
+G-9  One report per LHS measure per invocation.
+G-10 Do not produce a recommended action until Steps 1–5 are complete.
+G-11 Never proceed to debugging log investigation without explicit user confirmation.
+G-12 Do not begin any RCA work until Step 0 is complete and PDF is confirmed.
+G-13 The Active Rule Tutorial PDF is the single source of truth for all o9 platform behavior.`;
+
+/* ── Navigation ─────────────────────────────────────── */
+function goTo(step) {
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===step));
+  document.querySelectorAll('.nav-item').forEach((n,i) => {
+    n.classList.remove('active','done');
+    if(i===step) n.classList.add('active');
+    else if(i<step) n.classList.add('done');
+  });
+  const pct = [25,50,75,100][step] || 25;
+  document.getElementById('progFill').style.width = pct+'%';
+  if(step===3) buildReport();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ── Tab switcher ───────────────────────────────────── */
+function switchTab(tab, btn) {
+  document.querySelectorAll('.ev-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ev-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('pane-' + tab).classList.add('active');
+}
+
+/* ── File handling ──────────────────────────────────── */
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); addFileList(e.dataTransfer.files); });
+
+function handleFiles(input) { addFileList(input.files); }
+
+function addFileList(files) {
+  if (!files || !files.length) return;
+  const promises = [];
+  for (const file of files) {
+    promises.push(new Promise(resolve => {
+      const mime = file.type || guessMime(file.name);
+      const isExcel = /\.xlsx?$/i.test(file.name) ||
+        mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        mime === 'application/vnd.ms-excel';
+      const reader = new FileReader();
+      if (isExcel) {
+        reader.onload = ev => {
+          try {
+            const wb = XLSX.read(ev.target.result, { type:'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+            tenantRows = rows;
+          } catch(e) { console.warn('Excel parse failed:', e); }
+          uploadedFiles.push({ b64: null, mime, name: file.name, isExcel:true });
+          resolve();
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.onload = ev => {
+          uploadedFiles.push({ b64: ev.target.result.split(',')[1], mime, name: file.name });
+          resolve();
+        };
+        reader.readAsDataURL(file);
+      }
+    }));
+  }
+  Promise.all(promises).then(renderFileList);
+}
+
+function renderFileList() {
+  const list = document.getElementById('dzFileList');
+  list.innerHTML = uploadedFiles.map((f, i) =>
+    `<div style="font-size:12px;color:var(--fg);margin-top:6px;">📄 ${f.name} <span onclick="removeFile(${i})" style="cursor:pointer;color:var(--accent);margin-left:6px;" title="Remove">✕</span></div>`
+  ).join('');
+  document.getElementById('dzClear').style.display = uploadedFiles.length ? 'block' : 'none';
+}
+
+function removeFile(idx) {
+  const removed = uploadedFiles.splice(idx, 1)[0];
+  if (removed && removed.isExcel) tenantRows = [];
+  renderFileList();
+}
+
+function clearFiles() {
+  uploadedFiles = [];
+  tenantRows = [];
+  document.getElementById('dzFileList').innerHTML = '';
+  document.getElementById('dzClear').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+
+function guessMime(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { pdf:'application/pdf', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
+    csv:'text/plain', txt:'text/plain', log:'text/plain',
+    xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  return map[ext] || 'application/octet-stream';
+}
+
+function isImageMime(m) { return m && m.startsWith('image/'); }
+function isPdfMime(m)   { return m === 'application/pdf'; }
+
+/* ── Tenant Extract lookup ───────────────────────────── */
+function lookupTenantRule(lhsMeasure) {
+  if (!tenantRows.length || !lhsMeasure) return null;
+  const needle = lhsMeasure.trim().toLowerCase();
+  // Search every column value in every row for a match on the LHS measure name
+  const matches = tenantRows.filter(row =>
+    Object.values(row).some(v => String(v).toLowerCase().includes(needle))
+  );
+  if (!matches.length) return null;
+  // Format matched rows as a readable table
+  const headers = Object.keys(matches[0]);
+  const lines = matches.map(row =>
+    headers.map(h => `  ${h}: ${row[h]}`).join('\n')
+  );
+  return `ACTIVE RULE DATA FROM TENANT EXTRACT (${matches.length} match${matches.length>1?'es':''}):\n\n` +
+    lines.join('\n\n');
+}
+
+/* ── Build Anthropic API message content ────────────── */
+function buildUserContent(lhsMeasure, scopeDimensions, timePeriod, planVersion, valueStatus) {
+  const pastedText = (document.getElementById('pastedEvidence')?.value || '').trim();
+  const tenantRuleInfo = lookupTenantRule(lhsMeasure);
+  const parts = [];
+
+  for (const f of uploadedFiles) {
+    if (f.isExcel) continue; // Excel already parsed into tenantRows — not sent as binary
+    if (isImageMime(f.mime)) {
+      parts.push({ type:'image', source:{ type:'base64', media_type:f.mime, data:f.b64 } });
+    } else if (isPdfMime(f.mime)) {
+      parts.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data:f.b64 } });
+    }
+  }
+
+  parts.push({ type:'text', text:
+`RCA TRIGGER
+
+LHS Measure Name : ${lhsMeasure}
+Scope / Dimensions: ${scopeDimensions || 'not specified'}
+Time Period       : ${timePeriod || 'not specified'}
+Plan Version      : ${planVersion || 'not specified'}
+Value Status      : ${valueStatus || 'MISSING'}
+${tenantRuleInfo ? '\n' + tenantRuleInfo : ''}
+${pastedText ? '\nADDITIONAL EVIDENCE / PASTED DATA:\n' + pastedText : ''}
+
+Please execute all RCA steps as instructed. Begin with Step 0 (confirm the Active Rule Tutorial PDF is accessible), then proceed through Steps 1–5 and produce the full structured RCA report.`
+  });
+
+  return parts;
+}
+
+/* ── Spinner cycling ────────────────────────────────── */
+let spinIdx = 0, spinTimer = null;
+function startSpinner() {
+  const sw = document.getElementById('spinnerWrap');
+  const sm = document.getElementById('spinnerMsg');
+  sw.classList.add('show');
+  spinIdx = 0;
+  sm.textContent = SPINNER_MSGS[0];
+  spinTimer = setInterval(()=>{
+    spinIdx = (spinIdx+1) % SPINNER_MSGS.length;
+    sm.textContent = SPINNER_MSGS[spinIdx];
+  }, 1800);
+}
+function stopSpinner() {
+  clearInterval(spinTimer);
+  document.getElementById('spinnerWrap').classList.remove('show');
+}
+
+/* ── Run analysis ───────────────────────────────────── */
+async function runAnalysis() {
+  const lhsMeasure = v('lhsMeasure');
+  if(!lhsMeasure) { alert('Please enter the LHS Measure Name.'); return; }
+  const scopeDimensions = v('scopeDimensions');
+  const timePeriod = v('timePeriod');
+  const planVersion = v('planVersion');
+  const valueStatus = document.getElementById('valueStatus')?.value || 'MISSING';
+
+  goTo(1);
+  document.getElementById('aiResults').style.display = 'none';
+  document.getElementById('step4aBlock').style.display = 'none';
+  document.getElementById('step4aResponse').style.display = 'none';
+  startSpinner();
+
+  const content = buildUserContent(lhsMeasure, scopeDimensions, timePeriod, planVersion, valueStatus);
+
+  try {
+    // Extract text blocks only — claude -p (CLI) works with text input.
+    // Excel rows are already captured in tenantRows; images/PDFs noted but not binary-sent.
+    const textBlocks = content.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
+    const binaryCount = content.filter(b => b.type !== 'text').length;
+    const userMsg = textBlocks + (binaryCount > 0
+      ? `\n\n[Note: ${binaryCount} image/PDF attachment(s) were provided but are in binary format. Analyse based on the text evidence above.]`
+      : '');
+
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_prompt: RCA_SYSTEM_PROMPT,
+        user_message: userMsg
+      })
+    });
+
+    const rawResp = await resp.text();
+    let data;
+    try { data = JSON.parse(rawResp); }
+    catch { throw new Error(`Server returned unexpected response: ${rawResp.slice(0, 300)}`); }
+    if (!resp.ok) throw new Error(data.error || `Server error ${resp.status}`);
+    const raw = data.result || '';
+
+    rcaConversation = [
+      { role:'user', content: userMsg },
+      { role:'assistant', content: raw }
+    ];
+
+    stopSpinner();
+    renderRCA(raw);
+
+  } catch(err) {
+    stopSpinner();
+    document.getElementById('aiResults').style.display = 'block';
+    document.getElementById('analysisStatus').className = 'alert alert-err';
+    document.getElementById('analysisStatus').textContent = '⚠ RCA failed: ' + err.message + '. Check your network and try again.';
+  }
+}
+
+/* ── Render RCA report ──────────────────────────────── */
+function renderRCA(text) {
+  document.getElementById('rcaReportOutput').textContent = text;
+  document.getElementById('rcaSummaryReview').textContent = text;
+
+  const step4aTriggered = /debugging log/i.test(text) &&
+    (/Yes.*proceed|Please confirm/i.test(text));
+  document.getElementById('step4aBlock').style.display = step4aTriggered ? 'block' : 'none';
+  document.getElementById('step4aResponse').style.display = 'none';
+
+  const statusEl = document.getElementById('analysisStatus');
+  statusEl.className = 'alert alert-ok';
+  statusEl.textContent = '✅ RCA complete — review the findings below.';
+
+  aiRaw = { rcaReport: text };
+  document.getElementById('aiResults').style.display = 'block';
+}
+
+/* ── Step 4A: Proceed with / close debugging log ────── */
+async function proceedWithLogs(confirm) {
+  const userReply = confirm
+    ? 'Yes — proceed with debugging log investigation.'
+    : 'No — close RCA.';
+  document.getElementById('step4aBlock').style.display = 'none';
+  startSpinner();
+  try {
+    // Build full conversation history as text for claude -p (single-turn CLI).
+    const historyText = rcaConversation.map(msg => {
+      const role = msg.role.toUpperCase();
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : (Array.isArray(msg.content)
+            ? msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+            : String(msg.content));
+      return `${role}:\n${content}`;
+    }).join('\n\n---\n\n');
+
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_prompt: RCA_SYSTEM_PROMPT,
+        user_message: historyText + '\n\n---\n\nUSER:\n' + userReply
+      })
+    });
+    const rawResp2 = await resp.text();
+    let data;
+    try { data = JSON.parse(rawResp2); }
+    catch { throw new Error(`Server returned unexpected response: ${rawResp2.slice(0, 300)}`); }
+    if (!resp.ok) throw new Error(data.error || `Server error ${resp.status}`);
+    const raw = data.result || '';
+    stopSpinner();
+    document.getElementById('step4aOutput').textContent = raw;
+    document.getElementById('step4aResponse').style.display = 'block';
+    rcaConversation.push({ role:'user', content: userReply });
+    rcaConversation.push({ role:'assistant', content: raw });
+    aiRaw.followUp = raw;
+  } catch(e) {
+    stopSpinner();
+  }
+}
+
+/* ── Checklist toggle ───────────────────────────────── */
+function toggleChk(el) { el.classList.toggle('checked'); }
+
+/* ── Build final report ─────────────────────────────── */
+function buildReport() {
+  const chks = document.querySelectorAll('#closureChecklist .chk');
+  const passed = Array.from(chks).filter(c=>c.classList.contains('checked')).length;
+
+  const rcaReport = aiRaw.rcaReport || '';
+  const followUp  = aiRaw.followUp  || '';
+  const actions   = document.getElementById('recommendedActions')?.value || '';
+
+  const out = [
+`╔══════════════════════════════════════════════════════════╗
+  o9 SELF HEAL AGENT — MEASURE RCA REPORT
+  ${new Date().toLocaleString()}
+╚══════════════════════════════════════════════════════════╝`,
+
+`── TRIGGER ──────────────────────────────────────────────
+LHS Measure      : ${v('lhsMeasure') || '—'}
+Scope            : ${v('scopeDimensions') || '—'}
+Time Period      : ${v('timePeriod') || '—'}
+Plan Version     : ${v('planVersion') || '—'}
+Value Status     : ${document.getElementById('valueStatus')?.value || '—'}`,
+
+`── RCA REPORT ───────────────────────────────────────────
+${rcaReport}`,
+
+followUp ? `── DEBUGGING LOG FOLLOW-UP ──────────────────────────────
+${followUp}` : '',
+
+`── RECOMMENDED ACTIONS ──────────────────────────────────
+${actions || '(none recorded)'}`,
+
+`── CLOSURE RECORD ───────────────────────────────────────
+Confirmed cause   : ${v('closedCause') || '—'}
+Closure checklist : ${passed}/${chks.length} passed
+Owner             : ${v('owner') || '—'}
+Preventive action : ${v('preventive') || '—'}`,
+
+`──────────────────────────────────────────────────────────
+Generated by o9 Self Heal Agent`
+  ].filter(Boolean).join('\n\n');
+
+  document.getElementById('summaryOut').textContent = out;
+}
+
+/* ── Copy ───────────────────────────────────────────── */
+function copyReport() {
+  navigator.clipboard.writeText(document.getElementById('summaryOut').textContent)
+    .then(()=>{ const t=document.getElementById('toast'); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); });
+}
+
+/* ── Reset ──────────────────────────────────────────── */
+function resetAll() {
+  document.querySelectorAll('input[type=text],textarea,select').forEach(el=>el.value='');
+  clearFiles();
+  aiRaw={};
+  rcaConversation=[];
+  document.getElementById('aiResults').style.display='none';
+  document.getElementById('step4aBlock').style.display='none';
+  document.getElementById('step4aResponse').style.display='none';
+  document.getElementById('rcaReportOutput').textContent='';
+  document.getElementById('rcaSummaryReview').textContent='';
+  document.querySelectorAll('.chk.checked').forEach(c=>c.classList.remove('checked'));
+  document.querySelectorAll('.ev-tab').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.querySelectorAll('.ev-pane').forEach((p,i)=>p.classList.toggle('active',i===0));
+  goTo(0);
+}
+
+/* ── Helpers ────────────────────────────────────────── */
+function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+</script>
+</body>
+</html>

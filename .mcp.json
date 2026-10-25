@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "o9-platform": {
+      "command": "node",
+      "args": ["C:/tools/o9-mcp/node_modules/o9-platform-mcp/dist/index.js"]
+    }
+  }
+}
