@@ -19,7 +19,9 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+
 PORT = 5173
+
 BASE_DIR = Path(__file__).parent
 
 
