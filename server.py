@@ -9,6 +9,7 @@ Routes:
   GET  /              -> file-upload-new.html  (Active Rule Triage)
   GET  /self-heal     -> index 1.html          (Self Heal Agent)
   POST /api/analyze   -> calls claude -p, returns {"result": "..."}
+  POST /api/analyze   -> returns {"error": "..."} on error
 """
 import http.server
 import json

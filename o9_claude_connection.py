@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 o9_claude_connection.py
+o9 Self Heal Agent — Connection layer between Claude CLI and o9 MCP Server.git
 =======================
 Connection layer between Claude CLI and the o9 MCP Server.
 
