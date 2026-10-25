@@ -36,6 +36,8 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+## Adding a comment here
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 # o9 MCP server entry point (installed by o9-platform-mcp-0.6.0-win-setup)
