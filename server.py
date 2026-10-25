@@ -21,9 +21,9 @@ from urllib.parse import urlparse
 
 
 PORT = 5173
-
 BASE_DIR = Path(__file__).parent
 
+##Comments by AR##
 
 class AgentHandler(http.server.BaseHTTPRequestHandler):
 
